@@ -11,10 +11,8 @@ class OpenVPN(IntervalModule):
 
     Formatters:
 
-    * {vpn_name} — Same as setting.
+    * {unit} — Same as setting.
     * {status} — Unicode up or down symbol.
-    * {output} — Output of status_command.
-    * {label} — Label for this connection, if defined.
 
     """
 
@@ -22,11 +20,7 @@ class OpenVPN(IntervalModule):
     color_down = "#FF0000"
     status_up = '▲'
     status_down = '▼'
-    format = "{vpn_name} {status}"
-    status_command = "bash -c 'systemctl show openvpn@%(vpn_name)s | grep ActiveState=active'"
-
-    label = ''
-    vpn_name = ''
+    format = "{unit} {status}"
 
     settings = (
         ("format", "Format string"),
@@ -34,30 +28,29 @@ class OpenVPN(IntervalModule):
         ("color_down", "VPN is down"),
         ("status_down", "Symbol to display when down"),
         ("status_up", "Symbol to display when up"),
-        ("vpn_name", "Name of VPN"),
-        ("status_command", "command to find out if the VPN is active"),
+        ("unit", "Systemd unit name"),
     )
+    required = ("unit",)
 
-    def init(self):
-        if not self.vpn_name:
-            raise Exception("vpn_name is required")
+    @property
+    def active(self):
+        command_result = run_through_shell(['systemctl', 'is-active', self.unit])
+        return command_result.rc == 0
+
+    def toggle(self):
+        run_through_shell(['systemctl', 'stop' if self.active else 'start', self.unit])
 
     def run(self):
-        command_result = run_through_shell(self.status_command % {'vpn_name': self.vpn_name}, enable_shell=True)
-        output = command_result.out.strip()
-
-        if output:
+        if self.active:
             color = self.color_up
             status = self.status_up
         else:
             color = self.color_down
             status = self.status_down
 
-        vpn_name = self.vpn_name
-        label = self.label
-
-        self.data = locals()
         self.output = {
-            "full_text": self.format.format(**locals()),
+            "full_text": self.format.format(
+                unit=self.unit,
+                status=status),
             'color': color,
         }
